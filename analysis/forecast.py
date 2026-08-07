@@ -31,12 +31,9 @@ def forecast_next_n_months(n=3):
     from statsmodels.tsa.holtwinters import ExponentialSmoothing
 
     df = monthly_volume()
-    # Documented, inspected trim (not a blind positional slice):
-    # - 2016-09 through 2016-12 are the store's launch ramp-up (a handful of orders/month) --
-    #   not representative of steady-state demand.
-    # - 2018-09 and 2018-10 are partial/truncated months in the raw extract (16 and 4 orders) --
-    #   including them would make the model think demand collapsed.
-    # Stable window used for the model: 2017-01 through 2018-08.
+    # trimming to 2017-01 - 2018-08: checked the monthly counts first, 2016-09 to
+    # 2016-12 is just the store ramping up (a few orders/month), and 2018-09/10 are
+    # only 16 and 4 orders, clearly a truncated extract, not a real demand crash
     series = df.set_index("year_month")["order_count"]
     series = series.loc["2017-01":"2018-08"]
     series.index = pd.PeriodIndex(series.index, freq="M").to_timestamp()

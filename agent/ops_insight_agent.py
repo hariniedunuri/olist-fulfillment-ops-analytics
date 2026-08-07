@@ -1,20 +1,20 @@
 """
 Ops Insight Agent (rules-based v1).
 
-Purpose: when a seller is flagged anomalous (see analysis/delay_analysis.py
-seller_zscore_anomalies), this agent investigates and drafts a first-pass,
-human-reviewed root-cause summary + recommendation — so an analyst doesn't
-have to manually slice the data for every flag.
+When a seller gets flagged anomalous (see delay_analysis.seller_zscore_anomalies),
+this pulls the supporting numbers, figures out which fulfillment stage is driving
+the delay, and drafts a short root-cause note + recommendation. Saves me from
+manually re-running the same breakdown query every time something looks off.
 
-Design notes (read this before assuming it's "just an if/else"):
-  - This is an ORCHESTRATED, multi-step pipeline: retrieve -> classify -> draft -> validate.
-  - It is deterministic and rules-based, not an LLM call. That's a deliberate choice for
-    this submission: it's fully explainable, needs no API key, and is provably grounded
-    (every number in the output is one it actually retrieved -- no hallucination risk).
-  - It is architected so the "draft" step is a swappable component: agent/llm_draft.py
-    could replace `draft_narrative()` with an LLM call over the same retrieved, structured
-    context, with the same validate() groundedness check applied afterward. That upgrade
-    path is documented in README.md / docs/architecture.md rather than implemented blind.
+Four steps: retrieve -> classify -> draft -> validate. Retrieve only hits the
+approved SQL query (no free-form queries against the db). Validate checks that
+every number in the draft actually came from what was retrieved -- basically a
+sanity check so it can't state something that isn't in the data.
+
+Went with plain rules instead of an LLM call for now -- no API key needed, output
+is 100% predictable, and I didn't want a hallucination risk in something feeding
+a dashboard. draft_narrative() is the one function you'd swap out to plug in an
+LLM later, everything else (retrieve/classify/validate) stays the same.
 """
 import os
 import sys
@@ -41,7 +41,7 @@ class AgentFinding:
     grounding_notes: str = ""
 
 
-# Step 1: RETRIEVE — approved, parameterized SQL only (no free-form queries)
+# step 1: pull the seller's stage breakdown via the existing SQL query
 def retrieve_context(seller_id, conn=None):
     own = conn is None
     conn = conn or get_conn()
@@ -53,7 +53,7 @@ def retrieve_context(seller_id, conn=None):
     return breakdown.iloc[0].to_dict()
 
 
-# Step 2: CLASSIFY — localize which fulfillment stage dominates the delay
+# step 2: which stage is actually causing most of the delay?
 def classify_dominant_stage(ctx):
     stages = {
         "processing (purchase -> approval)": ctx.get("avg_processing_days") or 0,
@@ -64,7 +64,7 @@ def classify_dominant_stage(ctx):
     return dominant, stages
 
 
-# Step 3: DRAFT — deterministic template using ONLY retrieved numbers (v1; LLM-swappable, see module docstring)
+# step 3: write it up in plain English, using only the numbers we just pulled
 def draft_narrative(seller_id, ctx, dominant_stage, stages, z_score):
     order_count = ctx["order_count"]
     avg_delay = ctx["avg_delay_days"]
@@ -99,8 +99,7 @@ def draft_narrative(seller_id, ctx, dominant_stage, stages, z_score):
     return narrative, recommendation
 
 
-# Step 4: VALIDATE — groundedness check: every number in the narrative must trace back
-# to the retrieved context. This is a real (if simple) guardrail, not a no-op.
+# step 4: double check the draft didn't invent a number
 def validate_groundedness(narrative, ctx, stages, z_score=None):
     import re
     numbers_in_narrative = set(re.findall(r"-?\d+\.\d+", narrative))

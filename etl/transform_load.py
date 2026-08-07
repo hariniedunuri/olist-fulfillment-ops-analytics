@@ -46,9 +46,8 @@ def build_dim_date(orders):
 
 
 def build_dim_geography(geoloc):
-    # Known DQ issue: multiple lat/long rows per zip prefix. Documented decision:
-    # collapse to one row per zip prefix using the median lat/long (robust to outlier
-    # geocoding errors, which this dataset has plenty of).
+    # raw geoloc has multiple lat/lng rows per zip prefix, some clearly bad geocodes.
+    # using median instead of mean so a couple outlier points don't drag the location off
     g = geoloc.rename(columns={
         "geolocation_zip_code_prefix": "zip_prefix",
         "geolocation_lat": "lat",
@@ -106,9 +105,9 @@ def build_fact_orders(orders, items, payments, reviews):
     for c in TS_COLS:
         o[c] = pd.to_datetime(o[c], errors="coerce")
 
-    # Documented business-rule fix: 23 rows have delivered_customer < delivered_carrier
-    # (physically impossible / bad source timestamps). We flag them rather than silently
-    # dropping, and exclude them from SLA delay math specifically (not from the dataset).
+    # 23 orders have delivered_customer before delivered_carrier, which isn't physically
+    # possible -- bad timestamps somewhere upstream. Flagging instead of just dropping the
+    # rows, then excluding them from delay math only (they stay in the dataset otherwise)
     o["timestamp_anomaly_flag"] = (
         o["order_delivered_customer_date"].notna()
         & o["order_delivered_carrier_date"].notna()

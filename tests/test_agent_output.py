@@ -1,6 +1,6 @@
-"""Tests for the Ops Insight Agent: retrieval returns real data, narratives
-are grounded, and the groundedness validator actually catches ungrounded claims
-(a fake/no-op validator would make this test suite pointless -- so we test it directly)."""
+"""Tests for the Ops Insight Agent. Checks retrieval returns real data, full
+runs come back grounded, and the groundedness check actually rejects a made-up
+number when I feed it one directly (wanted to be sure it's not just a no-op)."""
 from ops_insight_agent import (
     retrieve_context, classify_dominant_stage, draft_narrative,
     validate_groundedness, investigate, run_agent_on_flagged_sellers,
