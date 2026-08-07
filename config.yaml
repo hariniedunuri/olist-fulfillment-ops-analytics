@@ -1,0 +1,5 @@
+raw_data_dir: "data/raw"
+db_path: "data/processed/olist.db"
+sla_note: "on_time_flag = delivered_customer_ts <= order_estimated_delivery_date"
+anomaly_zscore_threshold: 1.5
+min_orders_for_seller_analysis: 5
